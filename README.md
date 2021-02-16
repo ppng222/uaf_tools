@@ -1,3 +1,3 @@
 # uaf_tools
 
-Tools to assist in packing/cooking Ubi Art files
+Tools to assist in packing/cooking Ubi Soft files
