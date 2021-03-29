@@ -48,6 +48,7 @@ class BundleFile:
 		else:
 			self.RootFolder = rootFolder + '\\'
 	def cookFiles(self):
+		
 		if self.PLATFORM == "NX":
 			for currentFile in list(self.CookFiles):
 				absOrigFilePath = self.CookFiles[currentFile]['rawFilePath']
@@ -165,8 +166,57 @@ class BundleFile:
 				origFileModTime = int(os.path.getmtime(absOrigFilePath))
 				os.utime(absFinalFilePath,(origFileModTime,origFileModTime))
 		elif self.PLATFORM == "WII":
-			print("IMPLEMENT WII COOK")
-			pass
+			tapeExtensions = ['.dtape','.ktape','.tape']
+			for currentFile in list(self.CookFiles):
+				absOrigFilePath = self.CookFiles[currentFile]['rawFilePath']
+				absFinalFilePath = self.CookFiles[currentFile]['filePath']
+				## check if cooked file already exists ##
+				if os.path.exists(absFinalFilePath): # check last modified date to see if the original file has changed
+					# the file exists, check its last modified #
+					origFileModTime = int(os.path.getmtime(absOrigFilePath))
+					newFileModTime = int(os.path.getmtime(absFinalFilePath))
+					if origFileModTime == newFileModTime: # THE FILE HAS NOT CHANGED ##
+						continue  # break this iteration, do not cook the file
+				## the actual cooking process ##
+				fileDirectory = os.path.split(absFinalFilePath)[0].lower()
+				fileExtension = os.path.splitext(absOrigFilePath)[1]
+				# check if the FOLDER exists and make it if it doesnt
+				if os.path.exists(fileDirectory) == False:
+					os.makedirs(fileDirectory)
+				# cook the file based on its extension
+				if fileExtension == '.png' or fileExtension == '.tga':
+					TextureCooker.textureCook(self.PLATFORM,absOrigFilePath,absFinalFilePath)
+				
+				elif fileExtension == '.wav':
+					format = 'adpc'
+					interleave = True
+					if os.path.split(absOrigFilePath)[0].split(os.sep)[-1] == 'amb': 
+						interleave = False
+					AudioCooker.convertToAudio(absOrigFilePath,absFinalFilePath,self.PLATFORM,format,interleave)
+				elif fileExtension in tapeExtensions:
+					TapeCooker.cookToPlatform(absOrigFilePath,absFinalFilePath,self.PLATFORM)
+				elif fileExtension == '.act':
+					XML = minidom.parse(open(absOrigFilePath,'r'))
+					fileData = uaf.binaryActor(XML,self.PLATFORM)
+					with open(absFinalFilePath,'wb') as ckdFile:
+						ckdFile.write(fileData.getvalue())
+				elif fileExtension == '.isc':
+					XML = minidom.parse(open(absOrigFilePath,'r'))
+					Root = uaf.findNodes(XML,'root')[0]
+					scene = uaf.findNodes(Root,'Scene')[0]
+					with open(absFinalFilePath,'wb') as ckdFile:
+						uaf.Scene(ckdFile,scene)
+				elif fileExtension == '.tpl':
+					jsonData = json.loads(open(absOrigFilePath,'r').read().strip('\x00'))
+					with open(absFinalFilePath,'wb') as ckdFile:
+						uaf.JSON_Serialize(ckdFile,jsonData,"2016")
+				else:
+					print(f"unknown or non-serializable file: {currentFile}")
+					shutil.copyfile(absOrigFilePath,absFinalFilePath)
+				## set the last modified date !!!! ##
+				print("Cooking {}".format(currentFile))
+				origFileModTime = int(os.path.getmtime(absOrigFilePath))
+				os.utime(absFinalFilePath,(origFileModTime,origFileModTime))
 	def determineCookedFiles(self):	
 		cookExtensions = [".wav", ".png", ".tga", ".tape", ".dtape", ".ktape", ".isc", ".tpl", ".msh", ".act", ".mpd", ".sgs"]
 		compressExtensions = [".png", ".tga", ".m3d"]
@@ -244,8 +294,14 @@ class BundleFile:
 			else:
 				## this is not a desktop.ini file ##
 				relativeFilePath = currentFile[len(self.RootFolder)+1:]
+				## check if this is a shortcut file ##
+				if currentFile[-13:] == ".__SHORTCUT__":
+					with open(currentFile,'rb') as fileHandle:
+						absPath = fileHandle.read().decode()
+				else:
+					absPath = currentFile
 				fileData = {
-					"filePath": os.path.normpath(currentFile),
+					"filePath": os.path.normpath(absPath),
 					"compress": False
 				}
 				FILES[os.path.normpath(relativeFilePath)] = fileData
